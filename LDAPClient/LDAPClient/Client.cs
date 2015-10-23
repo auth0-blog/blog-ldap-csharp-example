@@ -42,7 +42,7 @@ namespace LDAPClient
 
                 foreach (string attrName in entry.Attributes.AttributeNames)
                 {
-                    //For simplicity, we ignore multi-value attributes
+                    //For simplicity, we separate multi-value attributes with a comma
                     dic[attrName] = string.Join(",", entry.Attributes[attrName].GetValues(typeof(string)));
                 }
 
