@@ -36,6 +36,27 @@ namespace LDAPClient
                 Console.WriteLine(String.Join("\r\n", d.Select(x => x.Key + ": " + x.Value).ToArray()));
             }
 
+            //Validating credentials
+            if(client.validateUser("sampleuser", "plaintextpass"))
+            {
+                Console.WriteLine("Valid credentials");
+            }
+            else
+            {
+                Console.WriteLine("Invalid credentials");
+            }
+
+            //Validating credentials using LDAP bind
+            //For this to work the server must be configured to map users correctly to its internal database
+            if(client.validateUserByBind("sampleuser", "plaintextpass"))
+            {
+                Console.WriteLine("Valid credentials (bind)");
+            }
+            else
+            {
+                Console.WriteLine("Invalid credentials (bind)");
+            }
+
             //Modifying a user
             client.changeUserUid("sampleuser", "newsampleuser");
 

@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.DirectoryServices.Protocols;
 using System.Net;
+using System.Security.Cryptography;
 
 namespace LDAPClient
 {
@@ -18,7 +19,8 @@ namespace LDAPClient
             var credentials = new NetworkCredential(username, password, domain);
             var serverId = new LdapDirectoryIdentifier(url);
 
-            connection = new LdapConnection(serverId, credentials);            
+            connection = new LdapConnection(serverId, credentials);
+            connection.Bind();      
         }
 
         /// <summary>
@@ -42,7 +44,7 @@ namespace LDAPClient
 
                 foreach (string attrName in entry.Attributes.AttributeNames)
                 {
-                    //For simplicity, we separate multi-value attributes with a comma
+                    //For simplicity, we ignore multi-value attributes
                     dic[attrName] = string.Join(",", entry.Attributes[attrName].GetValues(typeof(string)));
                 }
 
@@ -59,10 +61,13 @@ namespace LDAPClient
         /// <param name="user">The user to add</param>
         public void addUser(UserModel user)
         {
+            var sha1 = new SHA1Managed();
+            var digest = Convert.ToBase64String(sha1.ComputeHash(System.Text.Encoding.UTF8.GetBytes(user.UserPassword)));
+
             var request = new AddRequest(user.DN, new DirectoryAttribute[] {
                 new DirectoryAttribute("uid", user.UID),
                 new DirectoryAttribute("ou", user.OU),
-                new DirectoryAttribute("userPassword", user.UserPassword),
+                new DirectoryAttribute("userPassword", "{SHA}" + digest),
                 new DirectoryAttribute("objectClass", new string[] { "top", "account", "simpleSecurityObject" })
             });
 
@@ -94,6 +99,53 @@ namespace LDAPClient
         {
             var request = new DeleteRequest(dn);
             connection.SendRequest(request);
+        }
+
+        /// <summary>
+        /// Searches for a user and compares the password.
+        /// We assume all users are at base DN ou=users,dc=example,dc=com and that passwords are
+        /// hashed using SHA1 (no salt) in OpenLDAP format.
+        /// </summary>
+        /// <param name="username">Username</param>
+        /// <param name="password">Password</param>
+        /// <returns>true if the credentials are valid, false otherwise</returns>
+        public bool validateUser(string username, string password)
+        {
+            var sha1 = new SHA1Managed();
+            var digest = Convert.ToBase64String(sha1.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password)));
+            var request = new CompareRequest(string.Format("uid={0},ou=users,dc=example,dc=com", username), 
+                "userPassword", "{SHA}" + digest);
+            var response = (CompareResponse)connection.SendRequest(request);
+            return response.ResultCode == ResultCode.CompareTrue;
+        }
+
+        /// <summary>
+        /// Another way of validating a user is by performing a bind. In this case the server
+        /// queries its own database to validate the credentials. It is defined by the server
+        /// how a user is mapped to its directory.
+        /// </summary>
+        /// <param name="username">Username</param>
+        /// <param name="password">Password</param>
+        /// <returns>true if the credentials are valid, false otherwise</returns>
+        public bool validateUserByBind(string username, string password)
+        {
+            bool result = true;
+            var credentials = new NetworkCredential(username, password);
+            var serverId = new LdapDirectoryIdentifier(connection.SessionOptions.HostName);
+
+            var conn = new LdapConnection(serverId, credentials);
+            try
+            {
+                conn.Bind();
+            }
+            catch (Exception)
+            {
+                result = false;
+            }
+
+            conn.Dispose();
+
+            return result;
         }
 
         private LdapConnection connection;
